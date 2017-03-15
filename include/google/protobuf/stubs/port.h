@@ -60,8 +60,12 @@
   #endif
 #else
   #include <sys/param.h>   // __BYTE_ORDER
+  #if defined(__OpenBSD__)
+    #include <endian.h>
+  #endif
   #if ((defined(__LITTLE_ENDIAN__) && !defined(__BIG_ENDIAN__)) || \
-         (defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN)) && \
+         (defined(__BYTE_ORDER) && __BYTE_ORDER == __LITTLE_ENDIAN) || \
+         (defined(BYTE_ORDER) && BYTE_ORDER == LITTLE_ENDIAN)) && \
       !defined(PROTOBUF_DISABLE_LITTLE_ENDIAN_OPT_FOR_TEST)
     #define PROTOBUF_LITTLE_ENDIAN 1
   #endif
@@ -93,6 +97,15 @@
 
 // ===================================================================
 // from google3/base/port.h
+
+#if (defined(__GXX_EXPERIMENTAL_CXX0X__) || __cplusplus >= 201103L || \
+     (defined(_MSC_VER) && _MSC_VER >= 1900))
+// Define this to 1 if the code is compiled in C++11 mode; leave it
+// undefined otherwise.  Do NOT define it to 0 -- that causes
+// '#ifdef LANG_CXX11' to behave differently from '#if LANG_CXX11'.
+#define LANG_CXX11 1
+#endif
+
 namespace google {
 namespace protobuf {
 
@@ -327,6 +340,61 @@ static inline uint64 bswap_64(uint64 x) {
 #endif
 
 // ===================================================================
+// from google3/util/bits/bits.h
+
+class Bits {
+ public:
+  static uint32 Log2FloorNonZero(uint32 n) {
+#if defined(__GNUC__)
+  return 31 ^ __builtin_clz(n);
+#elif defined(COMPILER_MSVC) && defined(_M_IX86)
+  _asm {
+    bsr ebx, n
+    mov n, ebx
+  }
+  return n;
+#else
+  return Log2FloorNonZero_Portable(n);
+#endif
+  }
+
+  static uint64 Log2FloorNonZero64(uint64 n) {
+#if defined(__GNUC__)
+  return 63 ^ __builtin_clzll(n);
+#else
+  return Log2FloorNonZero64_Portable(n);
+#endif
+  }
+ private:
+  static int Log2FloorNonZero_Portable(uint32 n) {
+    if (n == 0)
+      return -1;
+    int log = 0;
+    uint32 value = n;
+    for (int i = 4; i >= 0; --i) {
+      int shift = (1 << i);
+      uint32 x = value >> shift;
+      if (x != 0) {
+        value = x;
+        log += shift;
+      }
+    }
+    assert(value == 1);
+    return log;
+  }
+
+  static int Log2FloorNonZero64_Portable(uint64 n) {
+    const uint32 topbits = static_cast<uint32>(n >> 32);
+    if (topbits == 0) {
+      // Top bits are zero, so scan in bottom bits
+      return Log2FloorNonZero(static_cast<uint32>(n));
+    } else {
+      return 32 + Log2FloorNonZero(topbits);
+    }
+  }
+};
+
+// ===================================================================
 // from google3/util/endian/endian.h
 LIBPROTOBUF_EXPORT uint32 ghtonl(uint32 x);
 
@@ -385,7 +453,6 @@ class BigEndian {
     GOOGLE_UNALIGNED_STORE64(p, FromHost64(v));
   }
 };
-
 
 }  // namespace protobuf
 }  // namespace google
