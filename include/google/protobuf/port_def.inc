@@ -136,6 +136,9 @@
 #ifdef PROTOBUF_UNUSED
 #error PROTOBUF_UNUSED was previously defined
 #endif
+#ifdef PROTOBUF_FINAL
+#error PROTOBUF_FINAL was previously defined
+#endif
 
 
 #define PROTOBUF_NAMESPACE "google::protobuf"
@@ -146,8 +149,17 @@
 #define PROTOBUF_NAMESPACE_CLOSE \
   } /* namespace protobuf */     \
   } /* namespace google */
-#define PROTOBUF_DEPRECATED
-#define PROTOBUF_DEPRECATED_MSG(x)
+
+#if defined(__GNUC__) || defined(__clang__)
+#define PROTOBUF_DEPRECATED __attribute__((deprecated))
+#define PROTOBUF_DEPRECATED_ENUM __attribute__((deprecated))
+#define PROTOBUF_DEPRECATED_MSG(msg) __attribute__((deprecated(msg)))
+#elif defined(_MSC_VER)
+#define PROTOBUF_DEPRECATED __declspec(deprecated)
+#define PROTOBUF_DEPRECATED_ENUM
+#define PROTOBUF_DEPRECATED_MSG(msg) __declspec(deprecated(msg))
+#endif
+
 #define PROTOBUF_SECTION_VARIABLE(x)
 #define PROTOBUF_MUST_USE_RESULT
 
@@ -160,10 +172,11 @@
 #ifdef GOOGLE_ATTRIBUTE_ALWAYS_INLINE
 #define PROTOBUF_ALWAYS_INLINE GOOGLE_ATTRIBUTE_ALWAYS_INLINE
 #else
-#if defined(__GNUC__) && (__GNUC__ > 3 ||(__GNUC__ == 3 && __GNUC_MINOR__ >= 1))
+#if defined(__GNUC__) && \
+    (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 1))
 // For functions we want to force inline.
 // Introduced in gcc 3.1.
-#define PROTOBUF_ALWAYS_INLINE __attribute__ ((always_inline))
+#define PROTOBUF_ALWAYS_INLINE __attribute__((always_inline))
 #else
 // Other compilers will have to figure it out for themselves.
 #define PROTOBUF_ALWAYS_INLINE
@@ -173,10 +186,11 @@
 #ifdef GOOGLE_ATTRIBUTE_NOINLINE
 #define PROTOBUF_NOINLINE GOOGLE_ATTRIBUTE_NOINLINE
 #else
-#if defined(__GNUC__) && (__GNUC__ > 3 ||(__GNUC__ == 3 && __GNUC_MINOR__ >= 1))
+#if defined(__GNUC__) && \
+    (__GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 1))
 // For functions we want to force not inline.
 // Introduced in gcc 3.1.
-#define PROTOBUF_NOINLINE __attribute__ ((noinline))
+#define PROTOBUF_NOINLINE __attribute__((noinline))
 #elif defined(_MSC_VER) && (_MSC_VER >= 1400)
 // Seems to have been around since at least Visual Studio 2005
 #define PROTOBUF_NOINLINE __declspec(noinline)
@@ -190,9 +204,10 @@
 #define PROTOBUF_FUNC_ALIGN GOOGLE_ATTRIBUTE_FUNC_ALIGN
 #else
 #if defined(__clang__) || \
-    defined(__GNUC__) && (__GNUC__ > 4 ||(__GNUC__ == 4 && __GNUC_MINOR__ >= 3))
+    defined(__GNUC__) &&  \
+        (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))
 // Function alignment attribute introduced in gcc 4.3
-#define PROTOBUF_FUNC_ALIGN(bytes) __attribute__ ((aligned(bytes)))
+#define PROTOBUF_FUNC_ALIGN(bytes) __attribute__((aligned(bytes)))
 #else
 #define PROTOBUF_FUNC_ALIGN(bytes)
 #endif
@@ -285,16 +300,25 @@
 
 // Shared google3/opensource definitions. //////////////////////////////////////
 
-#define PROTOBUF_VERSION 3008000
-#define PROTOBUF_MIN_HEADER_VERSION_FOR_PROTOC 3008000
-#define PROTOBUF_MIN_PROTOC_VERSION 3008000
+#define PROTOBUF_VERSION 3012004
+#define PROTOBUF_MIN_HEADER_VERSION_FOR_PROTOC 3012000
+#define PROTOBUF_MIN_PROTOC_VERSION 3012000
 #define PROTOBUF_VERSION_SUFFIX ""
 
 // The minimum library version which works with the current version of the
 // headers.
-#define GOOGLE_PROTOBUF_MIN_LIBRARY_VERSION 3008000
+#define GOOGLE_PROTOBUF_MIN_LIBRARY_VERSION 3012000
 
 #if defined(GOOGLE_PROTOBUF_NO_RTTI) && GOOGLE_PROTOBUF_NO_RTTI
+#define PROTOBUF_RTTI 0
+#elif defined(__has_feature)
+// https://clang.llvm.org/docs/LanguageExtensions.html#has-feature-and-has-extension
+#define PROTOBUF_RTTI __has_feature(cxx_rtti)
+#elif !defined(__cxx_rtti)
+// https://en.cppreference.com/w/User:D41D8CD98F/feature_testing_macros#C.2B.2B98
+#define PROTOBUF_RTTI 0
+#elif defined(__GNUC__) && !defined(__GXX_RTTI)
+#https:  // gcc.gnu.org/onlinedocs/cpp/Common-Predefined-Macros.html
 #define PROTOBUF_RTTI 0
 #else
 #define PROTOBUF_RTTI 1
@@ -312,12 +336,15 @@
 // For Clang we use __builtin_offsetof() and suppress the warning,
 // to avoid Control Flow Integrity and UBSan vptr sanitizers from
 // crashing while trying to validate the invalid reinterpet_casts.
-#define PROTOBUF_FIELD_OFFSET(TYPE, FIELD) \
-  _Pragma("clang diagnostic push")                                   \
-  _Pragma("clang diagnostic ignored \"-Winvalid-offsetof\"")         \
-  __builtin_offsetof(TYPE, FIELD)                                    \
+#define PROTOBUF_FIELD_OFFSET(TYPE, FIELD)                   \
+  _Pragma("clang diagnostic push")                           \
+  _Pragma("clang diagnostic ignored \"-Winvalid-offsetof\"") \
+  __builtin_offsetof(TYPE, FIELD)                            \
   _Pragma("clang diagnostic pop")
-#else
+#elif defined(__GNUC__) && \
+          (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8))
+#define PROTOBUF_FIELD_OFFSET(TYPE, FIELD) __builtin_offsetof(TYPE, FIELD)
+#else  // defined(__clang__)
 // Note that we calculate relative to the pointer value 16 here since if we
 // just use zero, GCC complains about dereferencing a NULL pointer.  We
 // choose 16 rather than some other number just in case the compiler would
@@ -328,33 +355,132 @@
                          reinterpret_cast<const char*>(16))
 #endif
 
-
-#if defined(_MSC_VER) && defined(PROTOBUF_USE_DLLS)
-#ifdef LIBPROTOBUF_EXPORTS
-#define PROTOBUF_EXPORT __declspec(dllexport)
-#else
-#define PROTOBUF_EXPORT __declspec(dllimport)
-#endif
-#ifdef LIBPROTOC_EXPORTS
-#define PROTOC_EXPORT __declspec(dllexport)
-#else
-#define PROTOC_EXPORT __declspec(dllimport)
-#endif
-#else
-#define PROTOBUF_EXPORT
-#define PROTOC_EXPORT
+#if defined(PROTOBUF_USE_DLLS)
+  #if defined(_MSC_VER)
+    #ifdef LIBPROTOBUF_EXPORTS
+      #define PROTOBUF_EXPORT __declspec(dllexport)
+      #define PROTOBUF_EXPORT_TEMPLATE_DECLARE
+      #define PROTOBUF_EXPORT_TEMPLATE_DEFINE __declspec(dllexport)
+    #else
+      #define PROTOBUF_EXPORT __declspec(dllimport)
+      #define PROTOBUF_EXPORT_TEMPLATE_DECLARE
+      #define PROTOBUF_EXPORT_TEMPLATE_DEFINE __declspec(dllimport)
+    #endif
+    #ifdef LIBPROTOC_EXPORTS
+      #define PROTOC_EXPORT __declspec(dllexport)
+    #else
+      #define PROTOC_EXPORT __declspec(dllimport)
+    #endif
+  #else  // defined(_MSC_VER)
+    #ifdef LIBPROTOBUF_EXPORTS
+      #define PROTOBUF_EXPORT __attribute__((visibility("default")))
+      #define PROTOBUF_EXPORT_TEMPLATE_DECLARE __attribute__((visibility("default")))
+      #define PROTOBUF_EXPORT_TEMPLATE_DEFINE
+    #else
+      #define PROTOBUF_EXPORT
+      #define PROTOBUF_EXPORT_TEMPLATE_DECLARE
+      #define PROTOBUF_EXPORT_TEMPLATE_DEFINE
+    #endif
+    #ifdef LIBPROTOC_EXPORTS
+      #define PROTOC_EXPORT   __attribute__((visibility("default")))
+    #else
+      #define PROTOC_EXPORT
+    #endif
+  #endif
+#else  // defined(PROTOBUF_USE_DLLS)
+  #define PROTOBUF_EXPORT
+  #define PROTOC_EXPORT
+  #define PROTOBUF_EXPORT_TEMPLATE_DECLARE
+  #define PROTOBUF_EXPORT_TEMPLATE_DEFINE
 #endif
 
 // Windows declares several inconvenient macro names.  We #undef them and then
 // restore them in port_undef.inc.
 #ifdef _MSC_VER
+#pragma push_macro("ERROR")
+#undef ERROR
 #pragma push_macro("GetMessage")
 #undef GetMessage
-#endif
+#pragma push_macro("IGNORE")
+#undef IGNORE
+#pragma push_macro("IN")
+#undef IN
+#pragma push_macro("OUT")
+#undef OUT
+#pragma push_macro("OPTIONAL")
+#undef OPTIONAL
+#pragma push_macro("min")
+#undef min
+#pragma push_macro("max")
+#undef max
+#endif  // _MSC_VER
+
+#if defined(__clang__) || defined(__GNUC__) || defined(_MSC_VER)
+// Don't let the YES/NO Objective-C Macros interfere with proto identifiers with
+// the same name.
+#pragma push_macro("YES")
+#undef YES
+#pragma push_macro("NO")
+#undef NO
+#endif // defined(__clang__) || defined(__GNUC__) || defined(_MSC_VER)
 
 #if defined(__clang__)
 #pragma clang diagnostic push
 // TODO(gerbens) ideally we cleanup the code. But a cursory try shows many
 // violations. So let's ignore for now.
 #pragma clang diagnostic ignored "-Wshorten-64-to-32"
+#elif defined(__GNUC__)
+// GCC does not allow disabling diagnostics within an expression:
+// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=60875, so we disable this one
+// globally even though it's only used for PROTOBUF_FIELD_OFFSET.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
 #endif
+
+// PROTOBUF_ASSUME(pred) tells the compiler that it can assume pred is true. To
+// be safe, we also validate the assumption with a GOOGLE_DCHECK in unoptimized
+// builds. The macro does not do anything useful if the compiler does not
+// support __builtin_assume.
+#ifdef __has_builtin
+#if __has_builtin(__builtin_assume)
+#define PROTOBUF_ASSUME(pred) \
+  GOOGLE_DCHECK(pred);               \
+  __builtin_assume(pred)
+#else
+#define PROTOBUF_ASSUME(pred) GOOGLE_DCHECK(pred)
+#endif
+#else
+#define PROTOBUF_ASSUME(pred) GOOGLE_DCHECK(pred)
+#endif
+
+// Specify memory alignment for structs, classes, etc.
+// Use like:
+//   class PROTOBUF_ALIGNAS(16) MyClass { ... }
+//   PROTOBUF_ALIGNAS(16) int array[4];
+//
+// In most places you can use the C++11 keyword "alignas", which is preferred.
+//
+// But compilers have trouble mixing __attribute__((...)) syntax with
+// alignas(...) syntax.
+//
+// Doesn't work in clang or gcc:
+//   struct alignas(16) __attribute__((packed)) S { char c; };
+// Works in clang but not gcc:
+//   struct __attribute__((packed)) alignas(16) S2 { char c; };
+// Works in clang and gcc:
+//   struct alignas(16) S3 { char c; } __attribute__((packed));
+//
+// There are also some attributes that must be specified *before* a class
+// definition: visibility (used for exporting functions/classes) is one of
+// these attributes. This means that it is not possible to use alignas() with a
+// class that is marked as exported.
+#if defined(_MSC_VER)
+#define PROTOBUF_ALIGNAS(byte_alignment) __declspec(align(byte_alignment))
+#elif defined(__GNUC__)
+#define PROTOBUF_ALIGNAS(byte_alignment) \
+  __attribute__((aligned(byte_alignment)))
+#else
+#define PROTOBUF_ALIGNAS(byte_alignment) alignas(byte_alignment)
+#endif
+
+#define PROTOBUF_FINAL final

@@ -112,11 +112,11 @@ typedef std::vector<const FieldDescriptor*> FieldDescriptorArray;
 // unpacks Any::value into a Message and compares its individual fields.
 // Messages encoded in a repeated Any cannot be compared using TreatAsMap.
 //
-//
 // Note on thread-safety: MessageDifferencer is *not* thread-safe. You need to
 // guard it with a lock to use the same MessageDifferencer instance from
 // multiple threads. Note that it's fine to call static comparison methods
-// (like MessageDifferencer::Equals) concurrently.
+// (like MessageDifferencer::Equals) concurrently, but it's not recommended for
+// performance critical code as it leads to extra allocations.
 class PROTOBUF_EXPORT MessageDifferencer {
  public:
   // Determines whether the supplied messages are equal. Equality is defined as
@@ -225,6 +225,19 @@ class PROTOBUF_EXPORT MessageDifferencer {
   // FieldDescriptors. The first will be the field of the embedded message
   // itself and the second will be the actual field in the embedded message
   // that was added/deleted/modified.
+  // Fields will be reported in PostTraversalOrder.
+  // For example, given following proto, if both baz and quux are changed.
+  // foo {
+  //   bar {
+  //     baz: 1
+  //     quux: 2
+  //   }
+  // }
+  // ReportModified will be invoked with following order:
+  // 1. foo.bar.baz or foo.bar.quux
+  // 2. foo.bar.quux or foo.bar.baz
+  // 2. foo.bar
+  // 3. foo
   class PROTOBUF_EXPORT Reporter {
    public:
     Reporter();
@@ -570,6 +583,9 @@ class PROTOBUF_EXPORT MessageDifferencer {
   // differencer when compare repeated fields in messages.
   void set_repeated_field_comparison(RepeatedFieldComparison comparison);
 
+  // Returns the current repeated field comparison used by this differencer.
+  RepeatedFieldComparison repeated_field_comparison();
+
   // Compares the two specified messages, returning true if they are the same,
   // false otherwise. If this method returns false, any changes between the
   // two messages will be reported if a Reporter was specified via
@@ -824,12 +840,14 @@ class PROTOBUF_EXPORT MessageDifferencer {
   // match. Clears output vectors and sets their values to indices of paired
   // messages, ie. if message1[0] matches message2[1], then match_list1[0] == 1
   // and match_list2[1] == 0. The unmatched indices are indicated by -1.
+  // Assumes the repeated field is not treated as a simple list.
   // This method returns false if the match failed. However, it doesn't mean
   // that the comparison succeeds when this method returns true (you need to
   // double-check in this case).
   bool MatchRepeatedFieldIndices(
       const Message& message1, const Message& message2,
       const FieldDescriptor* repeated_field,
+      const MapKeyComparator* key_comparator,
       const std::vector<SpecificField>& parent_fields,
       std::vector<int>* match_list1, std::vector<int>* match_list2);
 
