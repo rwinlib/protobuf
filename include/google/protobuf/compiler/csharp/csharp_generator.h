@@ -54,10 +54,10 @@ class PROTOC_EXPORT Generator : public CodeGenerator {
   ~Generator();
   bool Generate(
     const FileDescriptor* file,
-    const string& parameter,
+    const std::string& parameter,
     GeneratorContext* generator_context,
-    string* error) const override;
-  uint64 GetSupportedFeatures() const override;
+    std::string* error) const override;
+  uint64_t GetSupportedFeatures() const override;
 };
 
 }  // namespace csharp
